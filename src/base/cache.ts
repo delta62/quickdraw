@@ -1,59 +1,64 @@
-/*
- * decaffeinate suggestions:
- * DS101: Remove unnecessary use of Array.from
- * DS207: Consider shorter variations of null checks
- * Full docs: https://github.com/decaffeinate/decaffeinate/blob/master/docs/suggestions.md
- */
-qdInternal.cache = {
-    // Constructs a new simple caching object that will cache items
-    // based on an id string and when a cached item is not available
-    // it will call the given generator function with the id
-    //
-    // @note the cache is completely self contained, losing all references 
-    //       to it will correctly clean it up
-    //
-    // @param [Function] generator a function that will return a cacheable object given an id
-    // @param [Integer] cacheSize the max number of items to cache for any single id
-    // @return [Object] a pool object with get/put/clear functions defined
-    create(generator, cacheSize = qd.getConfig('defaultCacheSize')) {
-        return {
-            _cache : {},
+type GeneratorFn = (id: string, ...args: any[]) => any;
 
-            // Returns a useable result that is associated with the given id
-            // if the id has an object available in the cache then the cache
-            // will be used otherwise a new object weill be generated
-            // @param [String] id the id associated with a common cache set
-            // @return [Object] an object associated with the given id
-            get(id, ...args) {
-                // if there are no templates in the cache, ask for a new one
-                if (((this._cache[id] != null ? this._cache[id].length : undefined) != null ? (this._cache[id] != null ? this._cache[id].length : undefined) : 0) === 0) {
-                    return generator(id, ...Array.from(args));
-                }
+class Cache {
+    private cache: Record<string, any[]> = { };
 
-                // return an item from the cache
-                return this._cache[id].shift();
-            },
+    constructor(private generator: GeneratorFn, private size: number) { }
 
-            // Returns an object to the cache after it is no longer in use
-            // This assumes this object has been completely cleaned and can
-            // be correctly reused.
-            // @note if the cache size has been reached the object will be discarded
-            // @param [String] id the id associated with the given object
-            // @param [Object] object the object to add back to the cache
-            put(id, object) {
-                if (this._cache[id] == null) { this._cache[id] = []; }
-                if ((this._cache[id].length < cacheSize) || (cacheSize === -1)) {
-                    this._cache[id].push(object);
-                }
+    /**
+     * Returns a useable result that is associated with the given id
+     * if the id has an object available in the cache then the cache
+     * will be used otherwise a new object weill be generated
+     * @param [String] id the id associated with a common cache set
+     * @return [Object] an object associated with the given id
+     */
+    get(id: string, ...args: any[]) {
+        // if there are no templates in the cache, ask for a new one
+        if (!this.cache[id] || !this.cache[id].length) {
+            return this.generator(id, [ ...args ]);
+        }
 
-                // prevent cache exposure
-            },
-            
-            // Clears out the current pool cache
-            clear() {
-                this._cache = {};
-                // don't expose the cache
-            }
-        };
+        // return an item from the cache
+        return this.cache[id].shift();
     }
-};
+
+    /**
+     * Returns an object to the cache after it is no longer in use This assumes this object has been completely cleaned
+     * and can be correctly reused.
+     *
+     * @note if the cache size has been reached the object will be discarded
+     *
+     * @param id the id associated with the given object
+     * @param obj the object to add back to the cache
+     */
+    put(id: string, obj: any) {
+        if (!this.cache[id]) {
+            this.cache[id] = [ ];
+        }
+
+        if (this.cache[id].length < this.size || this.size === -1) {
+            this.cache[id].push(obj);
+        }
+    }
+
+    /**
+     * Clears out the current pool cache
+     */
+    clear() {
+        this.cache = { };
+    }
+}
+
+/**
+ * Constructs a new simple caching object that will cache items based on an id string. When a cached item is not
+ * available it will call the given generator function with the id
+ *
+ * @note the cache is completely self contained, losing all references to it will correctly clean it up
+ *
+ * @param generator a function that will return a cacheable object given an id
+ * @param cacheSize the max number of items to cache for any single id
+ * @return a pool object with get/put/clear functions defined
+ */
+export function create(generator: GeneratorFn, cacheSize: number) {
+    return new Cache(generator, cacheSize);
+}
