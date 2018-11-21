@@ -1,5 +1,5 @@
 import { enqueue as enqueueRender } from './renderer';
-import { addEvents} from './eventing';
+import { addEvents } from './eventing';
 import { clearValues, getValue, setValue, getInternalValue, setInternalValue } from './storage';
 import { throwError } from './errors';
 
@@ -12,7 +12,7 @@ type ActionType = "insert" | "remove";
 // have one already. The unique Id is then returned
 // @param [DomElement] node the element to get the unique id of
 // @return the unique node id
-export function uniqueId(node: Node) {
+export function uniqueId(node: HTMLElement) {
     if (getInternalValue(node, 'id') == null) {
         setInternalValue(node, 'id', ++uniqueIdentifier);
     }
@@ -33,7 +33,7 @@ export function virtualize(node: VirtualDomNode | HTMLElement): VirtualDomNode {
 }
 
 // @return [Node] unwraps a virtual dom node returing the raw node it modifes
-export function unwrap(node: VirtualDomNode | Node): Node | null {
+export function unwrap(node: VirtualDomNode | HTMLElement): Node | null {
     if (!node) return null;
     return node instanceof VirtualDomNode ? node.getRawNode() : node;
 }

@@ -1,4 +1,5 @@
-import { unwrap as unwrapDom } from './dom';
+import { VirtualDomNode, unwrap as unwrapDom } from './dom';
+import { state } from './state';
 import { set as setContext } from './context';
 
 export interface Observable {
@@ -12,7 +13,7 @@ export interface Observable {
  * @param [DomElement] element the element that is being updated
  * @param [String] handler the name of the handler accessing this observable
  */
-function addDependency(this: Observable, model = qdInternal.state.current.model, element = qdInternal.state.current.element, handler = qdInternal.state.current.handler) {
+function addDependency(this: Observable, model = state.current.model, element: VirtualDomNode | HTMLElement | null = state.current.element, handler = state.current.handler) {
     if (!model || !element) return;
 
     // unwrap the element in case its virtual
@@ -300,7 +301,7 @@ qd.observable = function(initialValue) {
         // If we are applying bindings and no model has been
         // set for this observable, set it
         if (qdInternal.state.current.model != null) {
-            qdInternal.observables.addDependency.call(obv);
+            addDependency.call(obv);
         }
 
         // Check if we were given a new value, if so set it
