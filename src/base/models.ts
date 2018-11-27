@@ -14,7 +14,7 @@ export interface Model<T> {
  * @param obj a raw data model
  * @return qdmodel that encapsulates the given raw model
  */
-export function create<T>(obj: T): Model<T> {
+export function create<T>(obj: Model<T> | T): Model<T> {
     if (isModel<T>(obj)) return obj;
 
     // Construct a new model wrapper

@@ -2,19 +2,22 @@
  * Functions related to model/dom binding
  */
 
+import { getInternalValue } from './storage';
+import { state } from './state';
 import { getConfig } from './config';
-import { throwError } from './errors';
+import { QuickdrawError, throwError } from './errors';
 import { VirtualDomNode, unwrap as unwrapDomNode, virtualize } from './dom';
 import { isModel, setParent } from './models';
 
-// Parses the binding function associated with the given node
-// @param [DomElement] a node that could have a binding function
-// @return [mixed]  a function that can be called with an approrpriate context
-//                       if the given node does have a binding function
-//                  null if the given node does not have a binding function
+/**
+ * Parses the binding function associated with the given node
+ * @param a node that could have a binding function
+ * @return a function that can be called with an approrpriate context if the given node does have a binding function
+ *     null if the given node does not have a binding function
+ */
 export function getBindingFunction(node: HTMLElement) {
     // If a node cant have an attribute, exit
-    if ((node != null ? node.getAttribute : undefined) == null) {
+    if (!node || !node.getAttribute) {
         return null;
     }
 
@@ -25,7 +28,7 @@ export function getBindingFunction(node: HTMLElement) {
     if (bindingString == null) { return null; }
 
     // build a function if not already cached
-    if (qdInternal.state.binding.functions[bindingString] == null) {
+    if (state.binding.functions[bindingString] == null) {
         // build the binding function since we haven't before
         let toParse = bindingString;
         if (bindingString.trim()[0] !== '{') {
@@ -53,11 +56,11 @@ export function getBindingFunction(node: HTMLElement) {
             error.setDomNode(node);
             return throwError(error);
         }
-        qdInternal.state.binding.functions[bindingString] = bindingFunction;
+        state.binding.functions[bindingString] = bindingFunction;
     }
 
     // return the binding function
-    return qdInternal.state.binding.functions[bindingString];
+    return state.binding.functions[bindingString];
 }
 
 // Gets the binding function for the given dom node and evaluates it in the given binding context
@@ -198,17 +201,18 @@ function bindDomNode(domNode: VirtualDomNode, bindingContext) {
     return shouldContinue;
 }
 
-// For the given node it runs the update function of any handlers that have been
-// marked as dirty on the dom node.
-// @param [DomNode] domNode the node that should be updated
-// @param [Object] bindingContext the context that the node should be evaluated in
-// @param [Object] bindingObject (optional) this parameter allows an already evaluated
-//                               binding object to be used instead of the result of the
-//                               binding function on the node.
-// @return [Boolean] whether or not the caller needs to traverse to the child nodes
-// @note the usual case will not provide a bindingObject but it is provided by the
-// original binding phase to prevent double evaluation of binding functions
-function updateDomNode(domNode, bindingContext, bindingObject = null) {
+/** For the given node it runs the update function of any handlers that have been
+ * marked as dirty on the dom node.
+ * @param [DomNode] domNode the node that should be updated
+ * @param [Object] bindingContext the context that the node should be evaluated in
+ * @param [Object] bindingObject (optional) this parameter allows an already evaluated
+ *                               binding object to be used instead of the result of the
+ *                               binding function on the node.
+ * @return [Boolean] whether or not the caller needs to traverse to the child nodes
+ * @note the usual case will not provide a bindingObject but it is provided by the
+ * original binding phase to prevent double evaluation of binding functions
+ */
+export function updateDomNode(domNode: HTMLElement, bindingContext, bindingObject = null) {
     // keep track of whether or not we should bind the children of this node
     let shouldContinue = true;
 
@@ -228,8 +232,8 @@ function updateDomNode(domNode, bindingContext, bindingObject = null) {
     }
 
     // get the handlers for this node
-    let handlers = qdInternal.storage.getInternalValue(domNode, 'handlers');
-    for (let handler of qdInternal.state.binding.order) {
+    let handlers = getInternalValue(domNode, 'handlers');
+    for (let handler of state.binding.order) {
         // only run the handler if it has been previously marked as dirty
         var left;
         if (!handlers[handler]) { continue; }
@@ -250,13 +254,14 @@ function updateDomNode(domNode, bindingContext, bindingObject = null) {
     return shouldContinue;
 }
 
-// Recursively unbinds an entire dom tree from their associated model
-// @param [VirtualDomNode] domNode the node to start the unbind at
-function unbindDomTree(domNode) {
-    let left, left1;
+/**
+ * Recursively unbinds an entire dom tree from their associated model
+ * @param domNode the node to start the unbind at
+ */
+function unbindDomTree(domNode: VirtualDomNode | HTMLElement) {
     domNode = qdInternal.dom.virtualize(domNode);
     // remove the node from all observables it is registered for
-    let observables = (left = qdInternal.storage.getInternalValue(domNode, 'observables')) != null ? left : [];
+    let observables = (left = getInternalValue(domNode, 'observables')) != null ? left : [];
     for (let observable of observables) {
         qdInternal.observables.removeDependency.call(observable, domNode);
     }
@@ -283,44 +288,4 @@ function unbindDomTree(domNode) {
     for (let child of domNode.getChildren()) {
         this.unbindDomTree(child);
     }
-
-    // void the return
 }
-
-// Applies bindings within the view model to the given domRoot
-// @param [Object] viewModel a raw javascript object that contains
-//                           bindable attributes
-// @param [Node] domRoot     a root in the dom tree to bind to
-// @throw Exception if view model or dom root is null
-qd.bindModel = function(viewModel, domRoot) {
-    if (viewModel == null) {
-        return qdInternal.errors.throw(new QuickdrawError("Bind model called with null view model"));
-    }
-
-    // wrap viewmodel to quickdraw model, externally these are never seen
-    viewModel = qdInternal.models.create(viewModel);
-    let baseContext = qdInternal.context.create(viewModel);
-    qdInternal.binding.bindModel(viewModel, domRoot, baseContext);
-
-    // clear the template cache now that binding is complete
-    qdInternal.templates.clearCache();
-
-    // schedule changes to the dom to be rendered
-    qdInternal.renderer.schedule();
-
-    // dont return result
-};
-
-
-// Unbinds the given dom node by removing all model references from
-// it and removing it as a dependency from any observables
-// @note this will recursively unbind
-// @param [DomNode] domRoot  a dom node that has been previously bound
-qd.unbindModel = function(domRoot) {
-    if (domRoot == null) { return; }
-
-    // Unbind the tree
-    qdInternal.binding.unbindDomTree(domRoot);
-
-    // void the return and prevent loop captures
-};

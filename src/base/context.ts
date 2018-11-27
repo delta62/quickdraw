@@ -1,20 +1,21 @@
-import { Observable, unwrap as unwrapObservable } from './observables';
-import { create as createModel, getParent, unwrap as unwrapModel } from './models';
+import { VirtualDomNode } from './dom';
+import { Observable, unwrapObservable } from './observables';
+import { Model, create as createModel, getParent, unwrap as unwrapModel } from './models';
 import { getInternalValue, setInternalValue } from './storage';
 import { getConfig } from './config';
 
-interface ViewModel {
-    __context: ViewModelContext;
+interface ViewModel<T> extends Model<T> {
+    __context: ViewModelContext<T>;
 }
 
-interface ViewModelContext {
-    $data: Observable<never>;
-    $rawData: never;
-    $parents: never[];
-    $parent: never;
-    $parentContext: ViewModelContext;
-    $root: never;
-    $extend(child: ViewModel): ViewModelContext;
+interface ViewModelContext<T> {
+    $data: Observable<any>;
+    $rawData: T;
+    $parents: any[];
+    $parent: never | null;
+    $parentContext: ViewModelContext<T> | null;
+    $root: any;
+    $extend(child: ViewModel<T>): ViewModelContext<T>;
 }
 
 /**
@@ -34,45 +35,26 @@ interface ViewModelContext {
  * @param viewModel the model to base the context off
  * @return a complete binding context for evaluation
  */
-export function create(viewModel: ViewModel): ViewModelContext {
+export function create<T>(viewModel: ViewModel<T>): ViewModelContext<T> {
     // check if this viewmodel already has a context, reuse if so
     if (viewModel.__context) {
         return viewModel.__context;
     }
 
-    // extending function for object
-    let extend = function(this: ViewModelContext, child: ViewModel) {
-        child = createModel(child);
-        let rawChildModel = unwrapModel(child);
-        // store context on child so it has a complete one to rebind with
-        child.__context = {
-            $data: unwrapObservable(rawChildModel),
-            $rawData: rawChildModel,
-            $parents: [this.$data].concat(this.$parents),
-            $parent: this.$data,
-            $parentContext: this,
-            $root: this.$root,
-            $extend: extend
-        };
-        return child.__context;
-    };
-
     // construct original parents
-    let parents = [ ];
-    let parentModels = [ ];
+    let parents: any[] = [ ];
+    let parentModels: ViewModel<never>[] = [ ];
     let current = viewModel;
+    let parent;
     while (parent = getParent(current)) {
-        parentModels.push(parent);
+        parentModels.push(parent as ViewModel<never>);
         parents.push(parent.raw);
-        current = parent;
+        current = parent as ViewModel<T>;
     }
 
-    let root = viewModel.raw;
-    if (parents.length && parents[parents.length - 1]) {
-        root = parents[parents.length - 1]
-    }
-
-    let parentCtx = parentModels[0] ? parentModels[0].__context : null;
+    let root = parents.length
+        ? unwrapObservable(parents[parents.length - 1])
+        : viewModel.raw;
 
     // new object
     viewModel.__context = {
@@ -80,7 +62,7 @@ export function create(viewModel: ViewModel): ViewModelContext {
         $rawData: viewModel.raw,
         $parents: parents,
         $parent: parents[0] || null,
-        $parentContext: parentCtx,
+        $parentContext: parentModels.length && parentModels[0] ? (parentModels[0] as ViewModel<never>).__context : null,
         $root: root,
         $extend: extend
     };
@@ -89,14 +71,33 @@ export function create(viewModel: ViewModel): ViewModelContext {
 }
 
 /**
+ * extending function for object
+ */
+function extend<T>(this: ViewModelContext<T>, child: Model<T> | T) {
+    child = createModel(child);
+    let rawChildModel = unwrapModel(child);
+    // store context on child so it has a complete one to rebind with
+    (child as any).__context = {
+        $data: unwrapObservable(rawChildModel),
+        $rawData: rawChildModel,
+        $parents: [this.$data].concat(this.$parents),
+        $parent: this.$data,
+        $parentContext: this,
+        $root: this.$root,
+        $extend: extend
+    };
+    return (child as any).__context;
+}
+
+/**
  * Get the binding context used on a dom node if there was one
  * @param domNode the node to get the context for
  * @return the complete binding context if this node has been bound before null if the given node hasn't been bound
  * before
  */
-export function get(domNode: HTMLElement) {
-    let baseViewModel = getInternalValue(domNode, getConfig('baseModelKey'));
-    if (baseViewModel == null) { return null; }
+export function get<T>(domNode: VirtualDomNode | HTMLElement) {
+    let baseViewModel = getInternalValue<ViewModel<T>>(domNode, getConfig('baseModelKey'));
+    if (!baseViewModel) return null;
     return create(baseViewModel);
 }
 
@@ -105,6 +106,6 @@ export function get(domNode: HTMLElement) {
  * @param domNode the node to set the context for
  * @param context the binding context that should be stored for this node
  */
-export function set(domNode: HTMLElement, context: ViewModelContext) {
+export function set<T>(domNode: HTMLElement, context: ViewModelContext<T>) {
     setInternalValue(domNode, getConfig('baseModelKey'), context);
 }

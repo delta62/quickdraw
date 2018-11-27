@@ -1,9 +1,9 @@
 type GeneratorFn = (id: string, ...args: any[]) => any;
 
-class Cache {
+export class Cache {
     private cache: Record<string, any[]> = { };
 
-    constructor(private generator: GeneratorFn, private size: number) { }
+    constructor(private generator: GeneratorFn, private size: number = -1) { }
 
     /**
      * Returns a useable result that is associated with the given id
@@ -59,6 +59,6 @@ class Cache {
  * @param cacheSize the max number of items to cache for any single id
  * @return a pool object with get/put/clear functions defined
  */
-export function create(generator: GeneratorFn, cacheSize: number) {
+export function create(generator: GeneratorFn, cacheSize?: number) {
     return new Cache(generator, cacheSize);
 }

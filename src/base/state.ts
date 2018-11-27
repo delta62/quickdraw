@@ -1,3 +1,8 @@
+import { VirtualDomNode } from './dom';
+import { Cache } from './cache';
+
+export type ErrorHandler = ((error: any) => void);
+
 /** representation of the current state */
 export interface QuickdrawState {
     current: CurrentState;
@@ -15,12 +20,12 @@ export interface CurrentState {
     /** the element currently being bound */
     element: null;
     /** the handler currently being used in binding */
-    handler: null;
+    handler: string | null;
 }
 
 export interface BindingState {
     /** a cache of parsed binding function strings */
-    functions: Record<string, never>;
+    functions: Record<string, Function>;
     /** the binding handlers that have been registered in the system */
     handlers: Record<string, never>;
     /** the order that handlers should be evaluated in */
@@ -29,12 +34,12 @@ export interface BindingState {
 
 export interface ErrorState {
     /** the handlers registered to handle errors that the library may encounter */
-    handlers: never[];
+    handlers: ErrorHandler[];
 }
 
 export interface UpdateState {
     /** the key to the currently schedule update timer */
-    key: null;
+    key: number | null;
     /** whether or not an immediate update has been set */
     immediate: boolean;
     /** dependency updates to process on next update */
@@ -43,22 +48,22 @@ export interface UpdateState {
 
 export interface RenderState {
     /** the key to the currently scheduled render timer */
-    key: null;
+    key: number | null;
     /** an object of node ids to whether or not they are enqueued */
-    enqueuedNodes: Record<string, never>;
+    enqueuedNodes: Record<string, boolean>;
     /** the current set of patches to apply to the dom */
-    queue: never[];
+    queue: VirtualDomNode[];
 }
 
 export interface TemplateState {
     /** the cache that stores the current set of nodes */
-    cache: null;
+    cache: Cache | null;
     /** the set of raw node templates used to make others */
-    nodes: Record<string, never>;
+    nodes: Record<string, HTMLElement[]>;
     /** a map of aliases to template names */
     aliases: Record<string, never>;
     /** a map of raw html to the associate template names */
-    html: Record<string, never>;
+    html: Record<string, number>;
 }
 
 export const state: QuickdrawState = {
@@ -68,27 +73,27 @@ export const state: QuickdrawState = {
         handler: null
     },
     binding: {
-        functions: {},
-        handlers: {},
-        order: []
+        functions: { },
+        handlers: { },
+        order: [ ]
     },
     error: {
-        handlers: []
+        handlers: [ ]
     },
     updates: {
         key: null,
         immediate: false,
-        queue: []
+        queue: [ ]
     },
     render: {
         key: null,
-        enqueuedNodes: {},
-        queue: []
+        enqueuedNodes: { },
+        queue: [ ]
     },
     templates: {
         cache: null,
-        nodes: {},
-        aliases: {},
-        html: {}
+        nodes: { },
+        aliases: { },
+        html: { }
     }
 };

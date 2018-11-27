@@ -11,7 +11,7 @@ import { VirtualDomNode, unwrap } from './dom';
  * @note this method should not be used outside of the core of quickdraw
  * @note virtual nodes will be correctly unwrapped
  */
-export function setInternalValue(node: VirtualDomNode | Node, name: string, value: any) {
+export function setInternalValue(node: VirtualDomNode | HTMLElement, name: string, value: any) {
     setValue(unwrap(node)!, name, value, '_');
 }
 
@@ -23,7 +23,7 @@ export function setInternalValue(node: VirtualDomNode | Node, name: string, valu
  * @note this method should not be used outside of the core of quickdraw
  * @note virtual nodes will be correctly unwrapped
  */
-export function getInternalValue<T>(node: VirtualDomNode | Node, name: string): T | null {
+export function getInternalValue<T>(node: VirtualDomNode | HTMLElement, name: string): T | null {
     return getValue(unwrap(node)!, name, '_');
 }
 
@@ -37,7 +37,7 @@ export function getInternalValue<T>(node: VirtualDomNode | Node, name: string): 
  * @note it is extremely rare that you would want to specify a non default value for the 4th parameter, but if you want
  * to share storage between handlers that would be one easy way to do it
  */
-export function setValue(node: VirtualDomNode | Node, name: string, value: any, namespace?: string): void
+export function setValue(node: VirtualDomNode | HTMLElement, name: string, value: any, namespace?: string): void
 export function setValue(node: any, name: string, value: any, namespace?: string) {
     namespace = namespace || state.current.handler || "null";
     let storageKey: string = getConfig('nodeDataKey');

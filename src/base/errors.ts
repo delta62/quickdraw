@@ -1,4 +1,7 @@
-import { unwrap as unwrapDom } from './dom';
+import { Model } from './models';
+import { ErrorHandler, state } from './state';
+import { Observable } from './observables';
+import { VirtualDomNode, unwrap as unwrapDom } from './dom';
 import { unwrap as unwrapModel } from './models';
 
 /**
@@ -7,21 +10,21 @@ import { unwrap as unwrapModel } from './models';
  */
 export class QuickdrawError {
     public  duringBinding: boolean;
-    private error: any;
-    private context: never;
-    private observable: never;
-    private domNode: never;
-    private handler: never;
-    private viewModel: never;
+    public error: any;
+    public context: never | null;
+    public observable: never | null;
+    public domNode: HTMLElement | null;
+    public handler: never | null;
+    public viewModel: never | null;
 
-    constructor(public message: string, originalError: any) {
-        this.duringBinding = qdInternal.state.current.element !== null;
+    constructor(public message: string, originalError?: any) {
+        this.duringBinding = state.current.element !== null;
         this.error = originalError;
         this.context = null;
         this.observable = null;
-        this.domNode = qdInternal.dom.unwrap(qdInternal.state.current.element != null ? qdInternal.state.current.element : null);
-        this.handler = qdInternal.state.current.handler != null ? qdInternal.state.current.handler : null;
-        this.viewModel = (qdInternal.models.unwrap(qdInternal.state.current.model)) != null ? left : null;
+        this.domNode = unwrapDom(state.current.element);
+        this.handler = state.current.handler || null;
+        this.viewModel = unwrapModel(state.current.model) || null;
     }
 
     /**
@@ -43,17 +46,17 @@ export class QuickdrawError {
 
     /**
      * Set the dom node that was in use during the error (if applicable)
-     * @param [DomNode] domNode in use during the error
+     * @param domNode in use during the error
      */
-    setDomNode(domNode) {
-        this.domNode = unwrap(domNode);
+    setDomNode(domNode: VirtualDomNode | HTMLElement) {
+        this.domNode = unwrapDom(domNode);
     }
 
     /**
      * Set the observable that caused this error (if applicable)
-     * @param [QDObservable] observable that caused the error
+     * @param observable that caused the error
      */
-    setObservable(observable) {
+    setObservable(observable: Observable<any>) {
         this.observable = observable;
     }
 
@@ -61,14 +64,16 @@ export class QuickdrawError {
      * Set the view model that caused this error (if applicable)
      * @param [QDModel] viewModel the model in use during the error
      */
-    setViewModel(viewModel) {
-        if (viewModel == null) return;
-        this.viewModel = qdInternal.models.unwrap(viewModel);
+    setViewModel(viewModel: Model<any> | any) {
+        if (!viewModel) return;
+        this.viewModel = unwrapModel(viewModel);
     }
 
-    // @return [Object] all known details about the error
+    /**
+     * @return [Object] all known details about the error
+     */
     errorInfo() {
-        return this._current;
+        return this.error;
     }
 }
 
@@ -79,18 +84,20 @@ export class QuickdrawError {
  * @param error a descriptive error object
  */
 export function throwError(error: any) {
-    if (qdInternal.state.error.handlers.length === 0) {
+    if (state.error.handlers.length === 0) {
         throw error;
     }
 
     // if there are registered handlers, call them all
-    for (let handler of qdInternal.state.error.handlers) {
+    for (let handler of state.error.handlers) {
         handler(error);
     }
 }
 
-// Registers a given callback to be notified when an error occurs
-// @param [Function] callback the function that will handle errors
-export function registerErrorHandler(callback) {
-    qdInternal.state.error.handlers.push(callback);
+/**
+ * Registers a given callback to be notified when an error occurs
+ * @param callback the function that will handle errors
+ */
+export function registerErrorHandler(callback: ErrorHandler) {
+    state.error.handlers.push(callback);
 }

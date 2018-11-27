@@ -1,19 +1,39 @@
+import { EventEmitter } from './eventing';
+import { getInternalValue, setInternalValue } from './storage';
 import { VirtualDomNode, unwrap as unwrapDom } from './dom';
 import { state } from './state';
 import { set as setContext } from './context';
+import { render } from './renderer';
 
-export interface Observable {
-    __dependencies: never[] | null;
+export interface Observable<T> extends EventEmitter {
+    (): T;
+    isObservable: true;
+}
+
+interface ObservableDependency {
+    domNode: HTMLElement;
+    handlers: string[];
+    unspecific?: boolean;
+}
+
+interface ObservableInternal<T> extends Observable<T> {
+    __dependencies: ObservableDependency[] | null;
+    __computedDependencies?: never[];
 }
 
 /**
  * Define internal observable functions
  * Adds a dom element and view model as a dependency to this observable
- * @param [Object] model the model that is used for the context of the element
- * @param [DomElement] element the element that is being updated
- * @param [String] handler the name of the handler accessing this observable
+ * @param model the model that is used for the context of the element
+ * @param element the element that is being updated
+ * @param handler the name of the handler accessing this observable
  */
-function addDependency(this: Observable, model = state.current.model, element: VirtualDomNode | HTMLElement | null = state.current.element, handler = state.current.handler) {
+function addDependency(
+        this: ObservableInternal<never>,
+        model = state.current.model,
+        element: VirtualDomNode | HTMLElement | null = state.current.element,
+        handler = state.current.handler) {
+
     if (!model || !element) return;
 
     // unwrap the element in case its virtual
@@ -21,28 +41,33 @@ function addDependency(this: Observable, model = state.current.model, element: V
 
     // store model on dom element, may overrite previous models, this is fine
     // elements should only be bound to one model anyways
-    setContext(element, model);
+    setContext(element!, model!);
 
     if (!this.__dependencies) {
         this.__dependencies = [ ];
     }
 
     // Add element to observable dependencies
-    let matchingElms = this.__dependencies.filter(elm => elm.domNode === element);
+    let matchingElms: ObservableDependency[] = [ ];
+    for (let i = 0; i < this.__dependencies.length; i++) {
+        let elm = this.__dependencies[i];
+        if (elm.domNode === element) {
+            matchingElms.push(elm);
+        }
+    }
+
+    let dependencyObject;
     if (matchingElms.length > 0) {
         dependencyObject = matchingElms[0];
     } else {
-        dependencyObject = {
-            domNode : element,
-            handlers : []
-        };
+        dependencyObject = { domNode: element!, handlers: [ ] };
         this.__dependencies.push(dependencyObject);
         // bound to a new element, alert listeners
-        this.emit('bound', [model, element]);
+        this.emit('bound', [ model, element ]);
     }
 
     // If a handler is defined, specify it in the handlers
-    if (handler != null) {
+    if (handler) {
         // if the current handler is not in the list of handlers, add it
         if (!__in__(handler, dependencyObject.handlers)) {
             dependencyObject.handlers.push(handler);
@@ -53,65 +78,82 @@ function addDependency(this: Observable, model = state.current.model, element: V
     }
 
     // Add observable to the dom element that is being updated
-    let observables = (left = qdInternal.storage.getInternalValue(element, 'observables')) != null ? left : [];
+    let observables = getInternalValue<ObservableInternal<never>[]>(element!, 'observables') || [ ];
     if (!__in__(this, observables)) {
         observables.push(this);
     }
-    qdInternal.storage.setInternalValue(element, 'observables', observables);
-
-    // dont return result
+    setInternalValue(element!, 'observables', observables);
 }
 
-// Adds a computed as a dependent to this observable
-// @param [QDComputed] computed the computed that depends on the observable
-function addComputedDependency(computed) {
-    if (this.__computedDependencies == null) { this.__computedDependencies = []; }
-
-    // Add to observable if necessary
-    if (!__in__(computed, this.__computedDependencies)) {
-        this.__computedDependencies.push(computed);
+/**
+ * Adds a computed as a dependent to this observable
+ * @param [QDComputed] computed the computed that depends on the observable
+ */
+function addComputedDependency(this: ObservableInternal<never>, computed: never) {
+    if (!this.__computedDependencies) {
+        this.__computedDependencies = [ ];
     }
 
+    // Add to observable if necessary
+    if (this.__computedDependencies.indexOf(computed) === -1) {
+        this.__computedDependencies.push(computed);
+    }
 }
 
-// Gets the dependencies for an observable
-// @note this will contain any nodes that are dependent directly or via computeds
-// @return [Array] the dom elements that are dependent on this observable
-function getDependencies() {
+/**
+ * Gets the dependencies for an observable
+ * @note this will contain any nodes that are dependent directly or via computeds
+ * @return the dom elements that are dependent on this observable
+ */
+function getDependencies(this: ObservableInternal<never>) {
     // get base direct dependencies
-    let dependencies = this.__dependencies != null ? this.__dependencies : [];
+    let dependencies = this.__dependencies || [ ];
 
     // get the dependencies as a result of computeds
-    for (let computed of (this.__computedDependencies != null ? this.__computedDependencies : [])) {
-        dependencies = dependencies.concat(qdInternal.observables.getDependencies.call(computed));
+    for (let computed of (this.__computedDependencies || [])) {
+        dependencies = dependencies.concat(getDependencies.call(computed));
     }
 
     return dependencies;
 }
 
-// Removes the given dom element as a dependency from this observable
-// @param [DomNode] element the dom node to remove
-function removeDependency(element) {
+/**
+ * Removes the given dom element as a dependency from this observable
+ * @param element the dom node to remove
+ */
+export function removeDependency(this: ObservableInternal<never>, element: VirtualDomNode | HTMLElement) {
     // ensure virtual elements are unwrapped
-    element = qdInternal.dom.unwrap(element);
+    element = unwrapDom(element)!;
 
-    this.__dependencies = (this.__dependencies.filter((dependency) => dependency.domNode !== element));
-    this.emit('unbound', [element]);
+    let filtered = [ ];
+    for (let dep of (this.__dependencies) || [ ]) {
+        if (dep.domNode !== element) {
+            filtered.push(dep);
+        }
+    }
+
+    this.__dependencies = filtered;
+
+    this.emit('unbound', [ element ]);
 }
 
-// Returns whether or not this observable has any type of dependency
-// @return [Boolean] whether or not the observable has any dependencies
-function hasDependencies() {
-    return qdInternal.observables.getDependencies.call(this).length > 0;
+/**
+ * Returns whether or not this observable has any type of dependency
+ * @return whether or not the observable has any dependencies
+ */
+function hasDependencies(this: Observable<never>): boolean {
+    return getDependencies.call(this).length > 0;
 }
 
-// Causes an update to happen for the dependencies of this observable
-function updateDependencies(immediate = false) {
-    let dependencies = qdInternal.observables.getDependencies.call(this);
+/**
+ * Causes an update to happen for the dependencies of this observable
+ */
+function updateDependencies(this: Observable<never>, immediate = false) {
+    let dependencies = getDependencies.call(this);
     // only update if there are dependencies
-    if (!(dependencies.length > 0)) { return; }
+    if (!dependencies.length) return;
 
-    let immediateRebinds = [];
+    let immediateRebinds = [ ];
 
     // traverse through the registered dependencies
     for (let dependency of dependencies) {
@@ -119,7 +161,7 @@ function updateDependencies(immediate = false) {
         let element = dependency.domNode;
 
         // mark all the dependent handlers dirty on the node
-        let handlers = qdInternal.storage.getInternalValue(element, 'handlers');
+        let handlers = getInternalValue<Record<string, boolean>>(element, 'handlers');
 
         // todo, fix bug where handlers doesnt exist but handler is specific
         if (!handlers) { continue; }
@@ -149,7 +191,7 @@ function updateDependencies(immediate = false) {
         qdInternal.updates.updateNodeSet(immediateRebinds);
 
         // trigger a bind render now, note we have to render the entire queue because of strict ordering
-        qdInternal.renderer.render();
+        render();
     } else {
         // schedule an update to occur
         qdInternal.updates.schedule();
@@ -157,17 +199,19 @@ function updateDependencies(immediate = false) {
 
     // emit a set value event since a change has occurred
     this.emit('set');
-
 }
 
-// These functions will be aliased to the observables we create
-// but they use the 'this' value to reference any necessary state
-// so that they can be defined once and used many times
+/* These functions will be aliased to the observables we create
+ * but they use the 'this' value to reference any necessary state
+ * so that they can be defined once and used many times
+ */
 let helpers = {
     // General Observable Helpers
 
     // Immediately updates the current observables dependencies
-    immediate(newValue) { return this(newValue, true); },
+    immediate<T>(this: Observable<T>, newValue: T) {
+        return this(newValue, true);
+    },
 
     // Silently updates the current observables dependencies
     silent(newValue) { return this(newValue, false, false); },
@@ -189,45 +233,45 @@ let helpers = {
 
     slice() {
         let ret = this.value.slice.apply(this.value, arguments);
-        qdInternal.observables.updateDependencies.call(this);
+        updateDependencies.call(this);
         return ret;
     },
 
     push(item) {
         this.value.push(item);
-        qdInternal.observables.updateDependencies.call(this);
+        updateDependencies.call(this);
     },
 
     pop() {
         let ret = this.value.pop();
-        qdInternal.observables.updateDependencies.call(this);
+        updateDependencies.call(this);
         return ret;
     },
 
     unshift(item) {
         this.value.unshift(item);
-        qdInternal.observables.updateDependencies.call(this);
+        updateDependencies.call(this);
     },
 
     shift() {
         let ret = this.value.shift();
-        qdInternal.observables.updateDependencies.call(this);
+        updateDependencies.call(this);
         return ret;
     },
 
     reverse() {
         this.value.reverse();
-        qdInternal.observables.updateDependencies.call(this);
+        updateDependencies.call(this);
     },
 
     sort(func) {
         this.value.sort(func);
-        qdInternal.observables.updateDependencies.call(this);
+        updateDependencies.call(this);
     },
 
     splice(first, count, ...elements) {
         let ret = this.value.splice(first, count, ...Array.from(elements));
-        qdInternal.observables.updateDependencies.call(this);
+        updateDependencies.call(this);
         return ret;
     },
 
@@ -244,7 +288,7 @@ let helpers = {
         }
 
         this.value = newBack;
-        qdInternal.observables.updateDependencies.call(this);
+        updateDependencies.call(this);
         return removed;
     },
 
@@ -264,17 +308,17 @@ let helpers = {
             removed = this.value;
             this.value = [];
         }
-        qdInternal.observables.updateDependencies.call(this);
+        updateDependencies.call(this);
         return removed;
     }
 },
 
-function extendFunctions(obs) {
+function extendFunctions<T>(obs: T): T & Observable {
     // Mark this as observable
-    obs.isObservable = true;
+    (obs as any).isObservable = true;
 
     // expose some helpers externally
-    obs.isBound = this.hasDependencies;
+    obs.isBound = hasDependencies;
     obs.immediate = this.helpers.immediate;
     obs.silent = this.helpers.silent;
 
@@ -310,7 +354,7 @@ qd.observable = function(initialValue) {
             obv.value = newValue;
             // only alert updates if enabled
             if (alertDependencies) {
-                qdInternal.observables.updateDependencies.call(obv, immediate);
+                updateDependencies.call(obv, immediate);
             }
         } else {
             if (alertDependencies) {
@@ -368,7 +412,7 @@ qd.computed = function(computedValue, thisBinding, observables) {
             continue;
         }
 
-        qdInternal.observables.addComputedDependency.call(observe, compute);
+        addComputedDependency.call(observe, compute);
     }
 
     return qdInternal.observables.extendFunctions(compute);
@@ -404,7 +448,7 @@ qd.observableArray = function(initialValue = []) {
 // Checks whether or not a given value is an observable
 // @param [Mixed] value a possible observable
 // @return [Boolean] true if value is an observable, false otherwise
-export function isObservable(value: any): value is Observable {
+export function isObservable(value: any): value is ObservableInternal {
     !!(value && value.isObservable)
 }
 
@@ -417,22 +461,18 @@ export function isObservable(value: any): value is Observable {
 //         If the value given is not an observable, just that value
 export function unwrapObservable(possible, recursive = false) {
     // handle null case upfront
-    if (possible == null) { return possible; }
+    if (possible == null) return possible;
 
     let unwrapped = possible;
     if (qd.isObservable(possible)) {
-        let left;
-        unwrapped = (left = (typeof possible.silent === 'function' ? possible.silent() : undefined)) != null ? left : possible();
+        unwrapped = typeof possible.silent === 'function' ? possible.silent() : possible();
     }
 
     // again handle a null value within an observable/computed
-    // note: typeof null == 'object'
-    if (unwrapped == null) { return unwrapped; }
+    if (unwrapped == null) return unwrapped;
 
-    // if this value can be recursively unwrapped and that was
-    // requested, do it now
+    // if this value can be recursively unwrapped and that was requested, do it now
     if (recursive && (typeof unwrapped === 'object')) {
-
         let recursed, value;
         if (Object.prototype.toString.call(unwrapped) === '[object Array]') {
             recursed = new Array(unwrapped.length);

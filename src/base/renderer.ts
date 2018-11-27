@@ -1,32 +1,35 @@
+import qd from '../quickdraw';
+import { getConfig } from './config';
+import { state } from './state';
 import { cancel, immediate } from './async';
 import { VirtualDomNode } from './dom';
-import { throwError } from './errors';
+import { QuickdrawError, throwError } from './errors';
 
 /** Render queue */
-let queue;
+let queue: VirtualDomNode[];
 
 export function enqueue(virtualNode: VirtualDomNode) {
     if ((virtualNode == null) || !(virtualNode instanceof VirtualDomNode)) {
         return throwError(new QuickdrawError("Cannot queue a non-virtual node for render"));
     }
 
-    let renderState = qdInternal.state.render;
+    let renderState = state.render;
     if (!renderState.enqueuedNodes[virtualNode.getUniqueId()]) {
         renderState.enqueuedNodes[virtualNode.getUniqueId()] = true;
-        qdInternal.state.render.queue.push(virtualNode);
+        state.render.queue.push(virtualNode);
     }
 
 }
 
 export function schedule() {
-    if (qd.getConfig('renderAsync')) {
+    if (getConfig('renderAsync')) {
         // renders should be performed async
-        if (qdInternal.state.render.key == null) {
+        if (state.render.key == null) {
             if (window.requestAnimationFrame != null) {
-                qdInternal.state.render.key = -1;
+                state.render.key = -1;
                 window.requestAnimationFrame(render);
             } else {
-                qdInternal.state.render.key = immediate(render);
+                state.render.key = immediate(render);
             }
 
             // alert that a render is scheduled to happen
@@ -42,10 +45,10 @@ export function schedule() {
 
 export function render() {
     // clear any current render timeout
-    cancel(qdInternal.state.render.key);
+    cancel(state.render.key);
 
     // render only if rendering is enabled
-    if (qd.getConfig('renderEnabled')) {
+    if (getConfig('renderEnabled')) {
 
         // alert any listeners that a render will occur
         let patch;
