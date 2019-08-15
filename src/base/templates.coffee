@@ -1,8 +1,14 @@
 # Functions related to the templating subsystem
 qdInternal.templates = {
+    createCount: 0
+
+    reuseCount: 0
+
     _uniqueId : 0
 
     _generator : (name, doc) ->
+        alias = Object.entries(qdInternal.state.templates.aliases).find(([ k, v ]) -> v is name)
+        # console.log("Generate template for #{alias && alias[0] || name}");
         nodes = qdInternal.state.templates.nodes[name]
         newNodes = new Array(nodes.length)
         for node, index in nodes

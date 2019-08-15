@@ -3,7 +3,7 @@ qdInternal.cache = {
     # based on an id string and when a cached item is not available
     # it will call the given generator function with the id
     #
-    # @note the cache is completely self contained, losing all references 
+    # @note the cache is completely self contained, losing all references
     #       to it will correctly clean it up
     #
     # @param [Function] generator a function that will return a cacheable object given an id
@@ -21,9 +21,11 @@ qdInternal.cache = {
             get : (id, args...) ->
                 # if there are no templates in the cache, ask for a new one
                 if (@_cache[id]?.length ? 0) is 0
+                    qdInternal.templates.createCount++
                     return generator(id, args...)
 
                 # return an item from the cache
+                qdInternal.templates.reuseCount++
                 return @_cache[id].shift()
 
             # Returns an object to the cache after it is no longer in use
@@ -39,7 +41,7 @@ qdInternal.cache = {
 
                 # prevent cache exposure
                 return
-            
+
             # Clears out the current pool cache
             clear : ->
                 @_cache = {}

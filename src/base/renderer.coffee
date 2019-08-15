@@ -1,4 +1,9 @@
 # methods to deal with rendering changes to the DOM tree
+
+renderNum = 0
+patchCount = 0
+insertCount = 0
+
 qdInternal.renderer = {
     enqueue : (virtualNode) ->
         if not virtualNode? or not (virtualNode instanceof qdInternal.dom.VirtualDomNode)
@@ -30,6 +35,13 @@ qdInternal.renderer = {
             qdInternal.renderer.render()
 
     render: ->
+        performance.clearMarks("renderStart")
+        performance.clearMeasures("renderDelta")
+        renderNum++
+        patchCount = 0
+        insertCount = 0
+        performance.mark("renderStart")
+
         # clear any current render timeout
         qdInternal.async.cancel(qdInternal.state.render.key)
 
@@ -50,6 +62,7 @@ qdInternal.renderer = {
             # render all the patches, no calculation is done here just application
             # this is done in a separate loop to try and make it as fast as possible
             for patch in patchesToRender
+                patchCount++
                 qdInternal.renderer.renderPatch(patch)
 
             # notify render on all nodes
@@ -59,7 +72,23 @@ qdInternal.renderer = {
             qdInternal.state.render.queue = []
             qdInternal.state.render.enqueuedNodes = {}
 
+            templateReuseCount = qdInternal.templates.reuseCount
+            templateCreateCount = qdInternal.templates.createCount
+
+            performance.measure("renderDelta", "renderStart")
+            mark = performance.getEntriesByName("renderDelta")[0]
+
             # now that the render is complete let listeners know
+            console.log("Render #{renderNum} completed.\n" +
+                "\tDuration: #{mark.duration.toFixed(2)}ms\n" +
+                "\tPatches rendered: #{patchCount}\n" +
+                "\tTemplates reused: #{templateReuseCount}\n" +
+                "\tTemplates created: #{templateCreateCount}\n" +
+                "\tNodes inserted: #{insertCount}"
+            )
+
+            qdInternal.templates.createCount = 0
+            qdInternal.templates.reuseCount = 0
             qd.emit('renderHasOccurred', null, false)
 
         # clear timeout key
@@ -114,6 +143,8 @@ qdInternal.renderer = {
                 # else would be action with a leads key and no value which means
                 # it is the tail node and should be appended to the end
 
+                # console.log('insert node', action.value)
+                insertCount++
                 garbage = node.insertBefore(action.value, beforeReference)
 
         # patch set completely rendered
